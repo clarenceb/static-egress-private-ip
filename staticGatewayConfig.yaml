@@ -1,0 +1,14 @@
+---
+apiVersion: egressgateway.kubernetes.azure.com/v1alpha1
+kind: StaticGatewayConfiguration
+metadata:
+  name: myegressgateway
+  namespace: demo
+spec:
+  gatewayVmssProfile:
+    vmssResourceGroup: MC_static-egress_static-egress_australiaeast
+    vmssName: aks-egressgw-36428368-vmss
+  provisionPublicIps: false
+  defaultRoute: azureNetworking
+  excludeCidrs:
+    - 10.0.0.0/16
