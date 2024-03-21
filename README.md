@@ -208,3 +208,7 @@ az container logs --resource-group $RG_NAME --name appcontainer
 ```sh
 az group delete -n $RG_NAME --yes --no-wait
 ```
+
+## References
+
+- [kube-egress-gateway](https://github.com/Azure/kube-egress-gateway) - GitHub
