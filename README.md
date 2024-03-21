@@ -1,8 +1,10 @@
 # AKS Static Egress with private egress IPs
 
-Simple demonstration of static egress using the kube-egress-gateway.
-Configuration is to use private egress IPs from a small subnet in the same VNET as the AKS cluster.
-Pods can access internet via default Azure networking route or a special private egress IP when accessing specific private RFC-1918 destinations.
+Simple demonstration of static egress using the open-source `kube-egress-gateway` project.
+The configuration used is to use private egress IPs from a small subnet in the same VNET as the AKS cluster.
+Pods can still access the Internet via default Azure networking route or static private egress IP(s) when accessing specific private RFC-1918 destinations (e.g. this could be a on-prem destination).
+This would allow predictable and a more narrow set of private IPs for egress traffic from the AKS cluster for use in firewall rules to allow traffic to on-premises or other private destinations.
+Prevously, you would need to whitelist the whole AKS subnet CIDR range.  The static egress feature allows you to opt-in workloads to use static egress IPs for specific destinations.
 
 ## Create the AKS cluster with a dedicated VMSS node pool for the egress gateway
 
@@ -10,6 +12,7 @@ Pods can access internet via default Azure networking route or a special private
 az login
 az account set --subscription "your-subscription-id"
 
+# Configure these to suit your environment:
 LOCATION=australiaeast
 CLUSTER=static-egress
 RG_NAME=static-egress
@@ -62,7 +65,7 @@ az aks install-cli
 kubectl get nodes
 ```
 
-## Create User-Managed Identity for the egress gateway
+## Create User-Managed Identity for the egress gateway controller
 
 ```sh
 EGRESS_IDENTITY_NAME="static-egress-identity"
@@ -74,6 +77,7 @@ IDENTITY_RESOURCE_ID=$(az identity show -g $RG_NAME -n $EGRESS_IDENTITY_NAME -o 
 SUBSCRIPTION_ID=$(az account show --query id -o tsv)
 NODE_RESOURCE_GROUP="$(az aks show -n $CLUSTER -g $RG_NAME --query nodeResourceGroup -o tsv)"
 EGRESS_VMSS_NAME=$(az vmss list -g $NODE_RESOURCE_GROUP --query [].name -o tsv | grep $EGRESS_NODE_POOL)
+SYSTEM_VMSS_NAME=$(az vmss list -g $NODE_RESOURCE_GROUP --query [].name -o tsv | grep -v $EGRESS_NODE_POOL)
 
 RG_ID="/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$RG_NAME"
 NODE_RG_ID="/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$NODE_RESOURCE_GROUP"
@@ -87,9 +91,9 @@ az role assignment create --role "Network Contributor" --assignee $IDENTITY_CLIE
 az role assignment create --role "Virtual Machine Contributor" --assignee $IDENTITY_CLIENT_ID --scope $EGRESS_VMSS_ID
 
 # Assign the user-managed identity to the egress gateway VMSS
-# (This is required for the kube-egress-gateway to use the identity to assign the egress IPs but won't be
-# needed with the AKS static egress feature when it becomes available.)
-az vmss identity assign --identities $IDENTITY_RESOURCE_ID  -g $NODE_RESOURCE_GROUP -n $EGRESS_VMSS_NAME
+# (This is currently required for the kube-egress-gateway controller to use the identity to assign the egress IPs but won't be
+# needed with the managed AKS static egress feature when it becomes available.)
+az vmss identity assign --identities $IDENTITY_RESOURCE_ID  -g $NODE_RESOURCE_GROUP -n $SYSTEM_VMSS_NAME
 ```
 
 ## Update the Azure Cloud Config with the User-Managed Identity
@@ -154,7 +158,7 @@ az network vnet peering create --name staticegress-to-target --resource-group $R
 az network vnet peering create --name target-to-staticegress --resource-group $RG_NAME --vnet-name $TARGET_VNET_NAME --remote-vnet $VNET_NAME --allow-vnet-access
 ```
 
-## Deploy a pod in the AKS cluster to test accessing the internal container instance without static egress
+## Deploy a pod in the AKS cluster to test accessing the internal container instance *without* static egress
 
 ```sh
 kubectl apply -f demo-ns.yaml
@@ -171,6 +175,8 @@ curl -i http://10.0.3.4
 curl -i http://10.0.3.4
 
 az container logs --resource-group $RG_NAME --name appcontainer
+# ::ffff:10.224.0.4 - - [21/Mar/2024:20:33:39 +0000] "GET / HTTP/1.1" 200 1663 "-" "curl/7.88.1"
+# (Private IP is from the AKS subnet)
 ```
 
 ## Deploy a static egress configuration
@@ -180,12 +186,12 @@ kubectl apply -f staticGatewayConfig.yaml
 kubectl describe StaticGatewayConfiguration myegressgateway -n demo
 ```
 
-## Deploy a pod in the AKS cluster to test accessing the internal container instance with static egress
+## Deploy a pod in the AKS cluster to test accessing the internal container instance *with* static egress
 
 ```sh
 kubectl apply -f app-staticegress.yaml
 
-kubect get pods -n demoapp
+kubectl get pods -n demo
 kubectl exec -ti app2-898d6b5bc-z22sm -n demo -- bash
 
 curl -i http://10.0.3.4
@@ -194,6 +200,8 @@ curl -i http://10.0.3.4
 curl -i http://10.0.3.4
 
 az container logs --resource-group $RG_NAME --name appcontainer
+# ::ffff:10.225.0.7 - - [21/Mar/2024:20:34:54 +0000] "GET / HTTP/1.1" 200 1663 "-" "curl/7.88.1"
+# (Private IP is from the static egress subnet)
 ```
 
 ## Cleanup
