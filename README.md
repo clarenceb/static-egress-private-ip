@@ -1,10 +1,9 @@
 # AKS Static Egress with private egress IPs
 
-Simple demonstration of static egress using the open-source `kube-egress-gateway` project.
-The configuration used is to use private egress IPs from a small subnet in the same VNET as the AKS cluster.
-Pods can still access the Internet via default Azure networking route or static private egress IP(s) when accessing specific private RFC-1918 destinations (e.g. this could be a on-prem destination).
-This would allow predictable and a more narrow set of private IPs for egress traffic from the AKS cluster for use in firewall rules to allow traffic to on-premises or other private destinations.
-Prevously, you would need to whitelist the whole AKS subnet CIDR range.  The static egress feature allows you to opt-in workloads to use static egress IPs for specific destinations.
+Simple demonstration of static egress using the open-source `kube-egress-gateway` project. The configuration used is to use private egress IPs from a small subnet in the same VNET as the AKS cluster.
+Pods can still access the Internet via default Azure networking route or static private egress IP(s) when accessing specific private RFC-1918 destinations (e.g. this could be a on-prem destination). This would allow predictable and a more narrow set of private IPs for egress traffic from the AKS cluster for use in firewall rules to allow traffic to on-premises or other private destinations. Prevously, you would need to whitelist the whole AKS subnet CIDR range.  The static egress feature allows you to opt-in workloads to use static egress IPs for specific destinations.
+
+This demo is using an AKS cluster and a target network (another VNET) with a container instance deployed. The AKS VNET and target VNET are peered.  This demonstrates a simplified scenario but could be extended to a real on-premises network or other private destinations.
 
 ## Create the AKS cluster with a dedicated VMSS node pool for the egress gateway
 
