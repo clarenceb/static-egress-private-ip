@@ -12,9 +12,9 @@ az login
 az account set --subscription "your-subscription-id"
 
 # Configure these to suit your environment:
-LOCATION=australiaeast
-CLUSTER=static-egress
-RG_NAME=static-egress
+LOCATION=australiasoutheast
+CLUSTER=egress-demo
+RG_NAME=egress-demo
 EGRESS_NODE_POOL=egressgw
 DEFAULT_SUBNET_NAME=default
 EGRESS_SUBNET_NAME=egress
@@ -67,7 +67,7 @@ kubectl get nodes
 ## Create User-Managed Identity for the egress gateway controller
 
 ```sh
-EGRESS_IDENTITY_NAME="static-egress-identity"
+EGRESS_IDENTITY_NAME="staticegress-msi"
 az identity create -g $RG_NAME -n $EGRESS_IDENTITY_NAME
 
 IDENTITY_CLIENT_ID=$(az identity show -g $RG_NAME -n $EGRESS_IDENTITY_NAME -o tsv --query "clientId")
@@ -93,29 +93,54 @@ az role assignment create --role "Virtual Machine Contributor" --assignee $IDENT
 # (This is currently required for the kube-egress-gateway controller to use the identity to assign the egress IPs but won't be
 # needed with the managed AKS static egress feature when it becomes available.)
 az vmss identity assign --identities $IDENTITY_RESOURCE_ID  -g $NODE_RESOURCE_GROUP -n $SYSTEM_VMSS_NAME
+az vmss identity assign --identities $IDENTITY_RESOURCE_ID  -g $NODE_RESOURCE_GROUP -n $EGRESS_VMSS_NAME
 ```
 
-## Update the Azure Cloud Config with the User-Managed Identity
+## Download the Azure Cloud Config templated and update with your details
 
 ```sh
 wget https://raw.githubusercontent.com/Azure/kube-egress-gateway/main/docs/samples/sample_azure_config_msi.yaml -O azure_config.yaml
 
+echo "Update the following values in azure_config.yaml:"
+echo "tenantId: $TENANT_ID"
+echo "subscriptionId: $SUBSCRIPTION_ID"
+echo "location: $LOCATION"
 echo "vnet name: $VNET_NAME"
 echo "vnet resource group: $RG_NAME"
 echo "egress vmss resource group: $NODE_RESOURCE_GROUP"
 echo "egress subnet name: $EGRESS_SUBNET_NAME"
-echo "egress vmss name: $EGRESS_VMSS_NAME"
 echo "userAssignedIdentityID: $IDENTITY_CLIENT_ID"
 ```
 
-Edit `azure_config.yaml` and update the `userAssignedIdentityID` with the `identityClientId` value.
+Edit `azure_config.yaml` and update with your values.
 
-```yaml
-useManagedIdentityExtension: true
-userAssignedIdentityID: "$identityClientId"
+Or run the command as per below to create the file:
+
+cat << EOF > azure_config.yaml
+config:
+  azureCloudConfig:
+    cloud: "AzurePublicCloud"
+    tenantId: "$TENANT_ID"
+    subscriptionId: "$SUBSCRIPTION_ID"
+    useManagedIdentityExtension: true
+    userAssignedIdentityID: "$IDENTITY_CLIENT_ID"
+    userAgent: "kube-egress-gateway-controller"
+    resourceGroup: "$NODE_RESOURCE_GROUP"
+    location: "$LOCATION"
+    gatewayLoadBalancerName: "kubeegressgateway-ilb"
+    loadBalancerResourceGroup: "$NODE_RESOURCE_GROUP"
+    vnetName: "$VNET_NAME"
+    vnetResourceGroup: "$RG_NAME"
+    subnetName: "$EGRESS_SUBNET_NAME"
+EOF
+
+```sh
+echo "Update staticGatewayConfig.yaml with the egress subnet VMSS:"
+echo "egress VMSS name: $EGRESS_VMSS_NAME"
+echo "egress VMSS resource group: $NODE_RESOURCE_GROUP"
 ```
 
-Update the remaining values in the file.
+Edit the file `staticGatewayConfig.yaml` and update using your egress VMSS name and egress VMSS reosurce group.
 
 ## Install Static Egress Gateway Helm Chart
 
@@ -162,8 +187,8 @@ az network vnet peering create --name target-to-staticegress --resource-group $R
 ```sh
 kubectl apply -f demo-ns.yaml
 kubectl apply -f app-nostaticegress.yaml
-kubectl get pods -n demo
-kubectl exec -ti app1-5f7b68bf86-b4c6f -n demo -- bash
+POD1=$(kubectl get pods -n demo -l app=app1 -o name)
+kubectl exec -ti $POD1 -n demo -- bash
 
 echo $TARGET_IP
 # 10.0.3.4
@@ -175,8 +200,11 @@ curl -i http://10.0.3.4
 
 az container logs --resource-group $RG_NAME --name appcontainer
 # ::ffff:10.224.0.4 - - [21/Mar/2024:20:33:39 +0000] "GET / HTTP/1.1" 200 1663 "-" "curl/7.88.1"
+#
 # (Private IP is from the AKS subnet)
 ```
+
+Note that the source IP is from the AKS subnet.
 
 ## Deploy a static egress configuration
 
@@ -189,9 +217,8 @@ kubectl describe StaticGatewayConfiguration myegressgateway -n demo
 
 ```sh
 kubectl apply -f app-staticegress.yaml
-
-kubectl get pods -n demo
-kubectl exec -ti app2-898d6b5bc-z22sm -n demo -- bash
+POD2=$(kubectl get pods -n demo -l app=app2 -o name)
+kubectl exec -ti $POD2 -n demo -- bash
 
 curl -i http://10.0.3.4
 curl -i http://10.0.3.4

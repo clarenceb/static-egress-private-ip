@@ -6,8 +6,8 @@ metadata:
   namespace: demo
 spec:
   gatewayVmssProfile:
-    vmssResourceGroup: MC_static-egress_static-egress_australiaeast
-    vmssName: aks-egressgw-36428368-vmss
+    vmssResourceGroup: <replace-with-your-vmmss-resource-group>
+    vmssName: <replace-with-your-vmss>
   provisionPublicIps: false
   defaultRoute: azureNetworking
   excludeCidrs:
