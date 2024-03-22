@@ -6,8 +6,8 @@ metadata:
   namespace: demo
 spec:
   gatewayVmssProfile:
-    vmssResourceGroup: <replace-with-your-vmmss-resource-group>
-    vmssName: <replace-with-your-vmss>
+    vmssResourceGroup: $NODE_RESOURCE_GROUP
+    vmssName: $EGRESS_VMSS_NAME
   provisionPublicIps: false
   defaultRoute: azureNetworking
   excludeCidrs:

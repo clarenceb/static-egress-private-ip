@@ -93,7 +93,6 @@ az role assignment create --role "Virtual Machine Contributor" --assignee $IDENT
 # (This is currently required for the kube-egress-gateway controller to use the identity to assign the egress IPs but won't be
 # needed with the managed AKS static egress feature when it becomes available.)
 az vmss identity assign --identities $IDENTITY_RESOURCE_ID  -g $NODE_RESOURCE_GROUP -n $SYSTEM_VMSS_NAME
-az vmss identity assign --identities $IDENTITY_RESOURCE_ID  -g $NODE_RESOURCE_GROUP -n $EGRESS_VMSS_NAME
 ```
 
 ## Download the Azure Cloud Config templated and update with your details
@@ -133,14 +132,6 @@ config:
     vnetResourceGroup: "$RG_NAME"
     subnetName: "$EGRESS_SUBNET_NAME"
 EOF
-
-```sh
-echo "Update staticGatewayConfig.yaml with the egress subnet VMSS:"
-echo "egress VMSS name: $EGRESS_VMSS_NAME"
-echo "egress VMSS resource group: $NODE_RESOURCE_GROUP"
-```
-
-Edit the file `staticGatewayConfig.yaml` and update using your egress VMSS name and egress VMSS reosurce group.
 
 ## Install Static Egress Gateway Helm Chart
 
@@ -197,6 +188,7 @@ curl -i http://10.0.3.4
 curl -i http://10.0.3.4
 curl -i http://10.0.3.4
 curl -i http://10.0.3.4
+exit
 
 az container logs --resource-group $RG_NAME --name appcontainer
 # ::ffff:10.224.0.4 - - [21/Mar/2024:20:33:39 +0000] "GET / HTTP/1.1" 200 1663 "-" "curl/7.88.1"
@@ -209,7 +201,9 @@ Note that the source IP is from the AKS subnet.
 ## Deploy a static egress configuration
 
 ```sh
-kubectl apply -f staticGatewayConfig.yaml
+export EGRESS_VMSS_NAME
+export NODE_RESOURCE_GROUP
+envsubst '$EGRESS_VMSS_NAME,$NODE_RESOURCE_GROUP' < staticGatewayConfig.yaml | kubectl apply -f -
 kubectl describe StaticGatewayConfiguration myegressgateway -n demo
 ```
 
